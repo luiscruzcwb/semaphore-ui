@@ -15,4 +15,4 @@
       authorized_key:
         user: ansible
         state: present
-        key: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
+        key: "{{ ANSIBLE_PUBLIC_KEY }}"
