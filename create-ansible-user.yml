@@ -1,0 +1,28 @@
+---
+- name: Criar usuário ansible em todas as VMs
+  hosts: all
+  become: true
+  tasks:
+    - name: Criar usuário ansible
+      ansible.builtin.user:
+        name: ansible
+        groups: sudo
+        append: yes
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Criar diretório .ssh
+      ansible.builtin.file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0700'
+
+    - name: Adicionar chave pública do Semaphore
+      ansible.builtin.copy:
+        dest: /home/ansible/.ssh/authorized_keys
+        owner: ansible
+        group: ansible
+        mode: '0600'
+        content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
