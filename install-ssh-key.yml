@@ -14,7 +14,7 @@
 - name: Copiar chave pública para authorized_keys
   copy:
     dest: /home/ansible/.ssh/authorized_keys
-    content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"        owner: ansible
+    content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
     owner: ansible
     group: ansible
     mode: '0600'
