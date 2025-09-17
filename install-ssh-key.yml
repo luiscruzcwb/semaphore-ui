@@ -5,16 +5,16 @@
   tasks:
     - name: Garantir que diretório .ssh existe
       file:
-        path: "/root/.ssh"
+        path: /home/ansible/.ssh
         state: directory
+        owner: ansible
+        group: ansible
         mode: '0700'
-        owner: root
-        group: root
 
     - name: Copiar chave pública para authorized_keys
       copy:
-        dest: "/root/.ssh/authorized_keys"
-        content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
+        dest: /home/ansible/.ssh/authorized_keys
+        content: "{{ lookup('file', '/root/.ssh/id_ed25519.pub') }}"
+        owner: ansible
+        group: ansible
         mode: '0600'
-        owner: root
-        group: root
