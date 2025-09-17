@@ -1,5 +1,5 @@
 ---
-- name: Instalar chave SSH do Semaphore nos servidores
+- name: Instalar chave SSH manualmente
   hosts: all
   become: true
   tasks:
@@ -11,8 +11,8 @@
         group: ansible
         mode: '0700'
 
-    - name: Adicionar chave pública do Semaphore ao usuário ansible
+    - name: Adicionar chave pública diretamente
       ansible.posix.authorized_key:
         user: ansible
         state: present
-        key: "{{ ANSIBLE_PUBLIC_KEY }}"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGXoqKTs2A8JoGpfPCJzUMZTfC3PamjjGebN90pI/BhJ ansible@semaphore"
