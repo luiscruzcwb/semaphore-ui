@@ -11,10 +11,10 @@
         group: ansible
         mode: '0700'
 
-- name: Copiar chave pública para authorized_keys
-  copy:
-    dest: /home/ansible/.ssh/authorized_keys
-    content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
-    owner: ansible
-    group: ansible
-    mode: '0600'
+    - name: Copiar chave pública para authorized_keys
+      copy:
+        dest: /home/ansible/.ssh/authorized_keys
+        content: "{{ lookup('env', 'ANSIBLE_PUBLIC_KEY') }}"
+        owner: ansible
+        group: ansible
+        mode: '0600'
