@@ -1,0 +1,22 @@
+---
+- name: Testar instalação do Docker e Docker Compose
+  hosts: all
+  become: true
+  tasks:
+    - name: Verificar versão do Docker
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Exibir versão do Docker
+      debug:
+        msg: "{{ docker_version.stdout }}"
+
+    - name: Verificar versão do Docker Compose
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+
+    - name: Exibir versão do Docker Compose
+      debug:
+        msg: "{{ compose_version.stdout }}"
