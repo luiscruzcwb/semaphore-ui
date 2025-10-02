@@ -1,0 +1,36 @@
+---
+- name: Bootstrap inicial de novas VMs
+  hosts: all
+  become: true
+  vars:
+    ansible_ssh_user: root
+    ansible_ssh_pass: admin123
+  tasks:
+    - name: Criar usuário ansible
+      user:
+        name: ansible
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    - name: Criar diretório .ssh
+      file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0700'
+
+    - name: Instalar chave pública no ansible
+      ansible.posix.authorized_key:
+        user: ansible
+        state: present
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGXoqKTs2A8JoGpfPCJzUMZTfC3PamjjGebN90pI/BhJ ansible@semaphore"
+
+    - name: Configurar sudo sem senha para ansible
+      copy:
+        dest: /etc/sudoers.d/ansible
+        content: "ansible ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: '0440'
