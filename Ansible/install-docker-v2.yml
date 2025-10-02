@@ -1,0 +1,95 @@
+---
+- name: Instalar Docker e Docker Compose (Ubuntu)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # mapeia a arquitetura do ansible para os nomes aceitos pelo repo do Docker
+    docker_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+      armv7l: armhf
+      armv6l: armhf
+      ppc64le: ppc64le
+      s390x: s390x
+
+  tasks:
+    - name: Definir arquitetura do Docker correta
+      set_fact:
+        docker_arch: "{{ docker_arch_map.get(ansible_architecture, 'amd64') }}"
+
+    - name: Instalar dependências
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Garantir diretório do keyring
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Baixar chave GPG oficial do Docker
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /tmp/docker.gpg
+        mode: '0644'
+
+    - name: Converter chave para formato keyring
+      command: gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Ajustar permissões do keyring
+      file:
+        path: /etc/apt/keyrings/docker.gpg
+        mode: '0644'
+
+    - name: Adicionar repositório do Docker
+      copy:
+        dest: /etc/apt/sources.list.d/docker.list
+        content: |
+          deb [arch={{ docker_arch }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release | lower }} stable
+        mode: '0644'
+
+    - name: Atualizar cache do apt após adicionar repositório
+      apt:
+        update_cache: yes
+
+    - name: Instalar Docker Engine e plugins
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Habilitar e iniciar Docker
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: (Opcional) Adicionar usuário ansible ao grupo docker
+      user:
+        name: ansible
+        groups: docker
+        append: yes
+
+    - name: Verificar versão do Docker (sanity check)
+      command: docker --version
+      register: docker_version_output
+      changed_when: false
+
+    - name: Exibir versão instalada
+      debug:
+        var: docker_version_output.stdout
