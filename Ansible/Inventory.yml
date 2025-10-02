@@ -1,0 +1,9 @@
+## Arquivo de exemplo de inventário Ansible
+
+
+[nameserver]
+ip ansible_user=ansible
+
+[nameserver:vars]
+ansible_become=true
+ansible_become_method=sudo

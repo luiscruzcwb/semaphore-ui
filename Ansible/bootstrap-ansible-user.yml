@@ -1,36 +1,45 @@
 ---
-- name: Bootstrap inicial de novas VMs
+- name: Bootstrap do usuário 'ansible' com sudo NOPASSWD
   hosts: all
+  gather_facts: false
   become: true
+
   vars:
-    ansible_ssh_user: root
-    ansible_ssh_pass: admin123
+    # (Opcional) cole sua chave pública para o usuário ansible
+    ansible_pubkey: ""
+
   tasks:
-    - name: Criar usuário ansible
+    - name: Garantir pacote sudo instalado
+      apt:
+        name: sudo
+        state: present
+        update_cache: yes
+
+    - name: Garantir usuário 'ansible' existe e tem home/shell
       user:
         name: ansible
         shell: /bin/bash
         create_home: yes
         state: present
 
-    - name: Criar diretório .ssh
-      file:
-        path: /home/ansible/.ssh
-        state: directory
-        owner: ansible
-        group: ansible
-        mode: '0700'
+    - name: Adicionar 'ansible' ao grupo sudo
+      user:
+        name: ansible
+        groups: sudo
+        append: yes
 
-    - name: Instalar chave pública no ansible
-      ansible.posix.authorized_key:
-        user: ansible
-        state: present
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGXoqKTs2A8JoGpfPCJzUMZTfC3PamjjGebN90pI/BhJ ansible@semaphore"
-
-    - name: Configurar sudo sem senha para ansible
+    - name: Instalar sudoers NOPASSWD para 'ansible' (com validação)
       copy:
-        dest: /etc/sudoers.d/ansible
+        dest: /etc/sudoers.d/90-ansible
         content: "ansible ALL=(ALL) NOPASSWD:ALL\n"
+        mode: '0440'
         owner: root
         group: root
-        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: (Opcional) Instalar chave pública SSH do 'ansible'
+      authorized_key:
+        user: ansible
+        key: "{{ ansible_pubkey }}"
+        state: present
+      when: ansible_pubkey | length > 0
