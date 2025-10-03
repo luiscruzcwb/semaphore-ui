@@ -1,0 +1,184 @@
+---
+- name: Deploy Nginx Proxy Manager (tudo via playbook)
+  hosts: npm
+  become: true
+  gather_facts: false
+
+  vars:
+    npm_root: /opt/npm
+    npm_env_file: "{{ npm_root }}/.env"
+    npm_compose_file: "{{ npm_root }}/compose.yml"
+
+    http_port: "80"
+    https_port: "443"
+    admin_port: "81"
+
+    db_name: "nginxproxy"
+    db_user: "nginxproxy"
+
+  pre_tasks:
+    - name: Precheck - Docker Compose v2 disponível
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+      failed_when: compose_version.rc != 0
+
+  tasks:
+    - name: Garantir diretórios do NPM
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ npm_root }}"
+        - "{{ npm_root }}/data"
+        - "{{ npm_root }}/letsencrypt"
+        - "{{ npm_root }}/mysql"
+
+    - name: Checar se .env já existe (para preservar credenciais)
+      stat:
+        path: "{{ npm_env_file }}"
+      register: env_stat
+
+    - name: Ler .env existente (se houver)
+      slurp:
+        path: "{{ npm_env_file }}"
+      register: env_slurp
+      when: env_stat.stat.exists
+
+    - name: Extrair valores do .env existente (ou vazio se não existir)
+      set_fact:
+        exist_env: "{{ (env_slurp.content | b64decode) if env_stat.stat.exists else '' }}"
+        exist_db_password: "{{ (exist_env | regex_search('^DB_MYSQL_PASSWORD=(.*)$', multiline=True)) | default('') | regex_replace('^DB_MYSQL_PASSWORD=','') }}"
+        exist_db_root_password: "{{ (exist_env | regex_search('^MYSQL_ROOT_PASSWORD=(.*)$', multiline=True)) | default('') | regex_replace('^MYSQL_ROOT_PASSWORD=','') }}"
+        exist_http_port: "{{ (exist_env | regex_search('^HTTP_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^HTTP_PORT=','') }}"
+        exist_https_port: "{{ (exist_env | regex_search('^HTTPS_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^HTTPS_PORT=','') }}"
+        exist_admin_port: "{{ (exist_env | regex_search('^ADMIN_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^ADMIN_PORT=','') }}"
+
+    - name: Gerar senha DB (apenas se não existir)
+      shell: "openssl rand -base64 24 | tr -d '\n'"
+      register: gen_db_pw
+      changed_when: false
+      when: not env_stat.stat.exists or (exist_db_password | length) == 0
+
+    - name: Gerar senha ROOT DB (apenas se não existir)
+      shell: "openssl rand -base64 28 | tr -d '\n'"
+      register: gen_db_root_pw
+      changed_when: false
+      when: not env_stat.stat.exists or (exist_db_root_password | length) == 0
+
+    - name: Definir valores finais (.env) preservando existentes
+      set_fact:
+        final_http_port: "{{ exist_http_port if (exist_http_port | length) > 0 else http_port }}"
+        final_https_port: "{{ exist_https_port if (exist_https_port | length) > 0 else https_port }}"
+        final_admin_port: "{{ exist_admin_port if (exist_admin_port | length) > 0 else admin_port }}"
+        final_db_password: "{{ exist_db_password if (exist_db_password | length) > 0 else gen_db_pw.stdout }}"
+        final_db_root_password: "{{ exist_db_root_password if (exist_db_root_password | length) > 0 else gen_db_root_pw.stdout }}"
+
+    - name: Verificar portas em uso
+      shell: |
+        set -e
+        for p in {{ final_http_port }} {{ final_https_port }} {{ final_admin_port }}; do
+          if ss -ltn "( sport = :$p )" | grep -q ":$p"; then
+            echo "PORTA_EM_USO:$p"
+          fi
+        done
+      register: port_check
+      changed_when: false
+
+    - name: Falhar se alguma porta estiver em uso
+      fail:
+        msg: >-
+          Porta(s) em uso: {{
+            port_check.stdout_lines | select('search','^PORTA_EM_USO:') |
+            map('regex_replace','^PORTA_EM_USO:','') | list | join(', ')
+          }}. Ajuste as portas no .env (serão gravadas na primeira execução).
+      when: port_check.stdout is search("PORTA_EM_USO:")
+
+    - name: Gravar arquivo .env (idempotente)
+      copy:
+        dest: "{{ npm_env_file }}"
+        mode: "0640"
+        content: |
+          # Ports
+          HTTP_PORT={{ final_http_port }}
+          HTTPS_PORT={{ final_https_port }}
+          ADMIN_PORT={{ final_admin_port }}
+
+          # DB settings
+          DB_MYSQL_HOST=db
+          DB_MYSQL_PORT=3306
+          DB_MYSQL_NAME={{ db_name }}
+          DB_MYSQL_USER={{ db_user }}
+          DB_MYSQL_PASSWORD={{ final_db_password }}
+          MYSQL_ROOT_PASSWORD={{ final_db_root_password }}
+      notify: docker compose up
+
+    - name: Gravar compose.yml (usa .env)
+      copy:
+        dest: "{{ npm_compose_file }}"
+        mode: "0644"
+        content: |
+          version: "3"
+          services:
+            app:
+              image: 'jc21/nginx-proxy-manager:latest'
+              restart: unless-stopped
+              ports:
+                - "${HTTP_PORT}:80"    # Porta HTTP pública
+                - "${HTTPS_PORT}:443"  # Porta HTTPS pública
+                - "${ADMIN_PORT}:81"   # Porta de administração do NPM
+              environment:
+                DB_MYSQL_HOST: "db"
+                DB_MYSQL_PORT: 3306
+                DB_MYSQL_USER: "${DB_MYSQL_USER}"
+                DB_MYSQL_PASSWORD: "${DB_MYSQL_PASSWORD}"
+                DB_MYSQL_NAME: "${DB_MYSQL_NAME}"
+                # DISABLE_IPV6: 'true'
+              volumes:
+                - ./data:/data
+                - ./letsencrypt:/etc/letsencrypt
+              depends_on:
+                - db
+
+            db:
+              image: 'jc21/mariadb-aria:latest'
+              restart: unless-stopped
+              environment:
+                MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+                MYSQL_DATABASE: "${DB_MYSQL_NAME}"
+                MYSQL_USER: "${DB_MYSQL_USER}"
+                MYSQL_PASSWORD: "${DB_MYSQL_PASSWORD}"
+                MARIADB_AUTO_UPGRADE: "1"
+              volumes:
+                - ./mysql:/var/lib/mysql
+      notify: docker compose up
+
+    - name: Forçar execução dos handlers no primeiro deploy
+      meta: flush_handlers
+
+    - name: Listar containers
+      shell: |
+        docker ps --format '{{"{{.Names}}"}}  {{"{{.Image}}"}}  {{"{{.Status}}"}}  {{"{{.Ports}}"}}'
+      register: ps_out
+      changed_when: false
+      retries: 10
+      delay: 3
+      until: ps_out.rc == 0
+
+    - name: Exibir status dos containers
+      debug:
+        var: ps_out.stdout_lines
+
+    - name: Informações de acesso
+      debug:
+        msg:
+          - "Painel do NPM: http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:{{ final_admin_port }}"
+          - "Credenciais padrão: admin@example.com / changeme (troque no primeiro login)"
+          - "Arquivo .env com senhas está em {{ npm_env_file }} (no host remoto)."
+
+  handlers:
+    - name: docker compose up
+      command: docker compose --env-file "{{ npm_env_file }}" -f "{{ npm_compose_file }}" up -d
+      args:
+        chdir: "{{ npm_root }}"
