@@ -168,6 +168,44 @@
     - name: Forçar execução dos handlers no primeiro deploy
       meta: flush_handlers
 
+    - name: Ler valores do .env (host remoto)
+      shell: awk -F= '/^(DB_MYSQL_NAME|DB_MYSQL_USER|DB_MYSQL_PASSWORD|MYSQL_ROOT_PASSWORD)=/ {print}' {{ npm_env_file }}
+      register: env_lines
+      changed_when: false
+
+    - name: Montar facts a partir do .env
+      set_fact:
+        env_map: "{{ dict(env_lines.stdout_lines | map('split','=',1) | list) }}"
+        dbn: "{{ env_map['DB_MYSQL_NAME'] }}"
+        dbu: "{{ env_map['DB_MYSQL_USER'] }}"
+        dbp: "{{ env_map['DB_MYSQL_PASSWORD'] }}"
+        dbr: "{{ env_map['MYSQL_ROOT_PASSWORD'] }}"
+
+    - name: Esperar DB ficar pronto
+      shell: docker compose exec -T db sh -c 'until mysqladmin ping -uroot -p"{{ dbr }}" --silent; do sleep 2; done'
+      args: { chdir: "{{ npm_root }}" }
+      register: db_ping
+      retries: 30
+      delay: 2
+      until: db_ping.rc == 0
+      changed_when: false
+
+    - name: Garantir DB/usuário/senha e grants (valores literais)
+      shell: |
+        docker compose exec -T db mysql -uroot -p"{{ dbr }}" -e "
+        CREATE DATABASE IF NOT EXISTS \`{{ dbn }}\`;
+        CREATE USER IF NOT EXISTS '{{ dbu }}'@'%' IDENTIFIED BY '{{ dbp }}';
+        ALTER USER '{{ dbu }}'@'%' IDENTIFIED BY '{{ dbp }}';
+        GRANT ALL PRIVILEGES ON \`{{ dbn }}\`.* TO '{{ dbu }}'@'%';
+        FLUSH PRIVILEGES;"
+      args: { chdir: "{{ npm_root }}" }
+      changed_when: true
+
+    - name: Reiniciar app após ajustar credenciais
+      command: docker compose restart app
+      args: { chdir: "{{ npm_root }}" }
+      changed_when: true
+
     - name: Listar containers
       shell: |
         docker ps --format '{{"{{.Names}}"}}  {{"{{.Image}}"}}  {{"{{.Status}}"}}  {{"{{.Ports}}"}}'
