@@ -1,5 +1,5 @@
 ---
-- name: Deploy Nginx Proxy Manager (tudo via playbook)
+- name: Deploy Nginx Proxy Manager (tudo via playbook, robusto)
   hosts: npm
   become: true
   gather_facts: false
@@ -46,34 +46,45 @@
       register: env_slurp
       when: env_stat.stat.exists
 
-    - name: Extrair valores do .env existente (ou vazio se não existir)
+    - name: Definir texto do .env (vazio se não existir)
       set_fact:
-        exist_env: "{{ (env_slurp.content | b64decode) if env_stat.stat.exists else '' }}"
-        exist_db_password: "{{ (exist_env | regex_search('^DB_MYSQL_PASSWORD=(.*)$', multiline=True)) | default('') | regex_replace('^DB_MYSQL_PASSWORD=','') }}"
-        exist_db_root_password: "{{ (exist_env | regex_search('^MYSQL_ROOT_PASSWORD=(.*)$', multiline=True)) | default('') | regex_replace('^MYSQL_ROOT_PASSWORD=','') }}"
-        exist_http_port: "{{ (exist_env | regex_search('^HTTP_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^HTTP_PORT=','') }}"
-        exist_https_port: "{{ (exist_env | regex_search('^HTTPS_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^HTTPS_PORT=','') }}"
-        exist_admin_port: "{{ (exist_env | regex_search('^ADMIN_PORT=(.*)$', multiline=True)) | default('') | regex_replace('^ADMIN_PORT=','') }}"
+        env_text: "{{ (env_slurp.content | b64decode) if env_stat.stat.exists else '' }}"
+
+    - name: Extrair valores do .env existente (ou vazio)
+      set_fact:
+        exist_db_password: "{{ (env_text | regex_search('(?m)^DB_MYSQL_PASSWORD=(.*)$')) | default('') | regex_replace('^DB_MYSQL_PASSWORD=','') }}"
+        exist_db_root_password: "{{ (env_text | regex_search('(?m)^MYSQL_ROOT_PASSWORD=(.*)$')) | default('') | regex_replace('^MYSQL_ROOT_PASSWORD=','') }}"
+        exist_http_port: "{{ (env_text | regex_search('(?m)^HTTP_PORT=(.*)$')) | default('') | regex_replace('^HTTP_PORT=','') }}"
+        exist_https_port: "{{ (env_text | regex_search('(?m)^HTTPS_PORT=(.*)$')) | default('') | regex_replace('^HTTPS_PORT=','') }}"
+        exist_admin_port: "{{ (env_text | regex_search('(?m)^ADMIN_PORT=(.*)$')) | default('') | regex_replace('^ADMIN_PORT=','') }}"
 
     - name: Gerar senha DB (apenas se não existir)
       shell: "openssl rand -base64 24 | tr -d '\n'"
       register: gen_db_pw
       changed_when: false
-      when: not env_stat.stat.exists or (exist_db_password | length) == 0
+      when: (exist_db_password | length) == 0
 
     - name: Gerar senha ROOT DB (apenas se não existir)
       shell: "openssl rand -base64 28 | tr -d '\n'"
       register: gen_db_root_pw
       changed_when: false
-      when: not env_stat.stat.exists or (exist_db_root_password | length) == 0
+      when: (exist_db_root_password | length) == 0
 
     - name: Definir valores finais (.env) preservando existentes
       set_fact:
         final_http_port: "{{ exist_http_port if (exist_http_port | length) > 0 else http_port }}"
         final_https_port: "{{ exist_https_port if (exist_https_port | length) > 0 else https_port }}"
         final_admin_port: "{{ exist_admin_port if (exist_admin_port | length) > 0 else admin_port }}"
-        final_db_password: "{{ exist_db_password if (exist_db_password | length) > 0 else gen_db_pw.stdout }}"
-        final_db_root_password: "{{ exist_db_root_password if (exist_db_root_password | length) > 0 else gen_db_root_pw.stdout }}"
+        final_db_password: "{{ exist_db_password if (exist_db_password | length) > 0 else (gen_db_pw.stdout | default('')) }}"
+        final_db_root_password: "{{ exist_db_root_password if (exist_db_root_password | length) > 0 else (gen_db_root_pw.stdout | default('')) }}"
+
+    - name: Checar se geramos as duas senhas quando não havia .env
+      assert:
+        that:
+          - final_db_password | length > 0
+          - final_db_root_password | length > 0
+        fail_msg: "Falha ao gerar senhas do banco. Verifique se 'openssl' está instalado."
+        success_msg: "Senhas definidas com sucesso (ou preservadas do .env)."
 
     - name: Verificar portas em uso
       shell: |
