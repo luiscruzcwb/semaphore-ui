@@ -14,27 +14,70 @@
       ignore_errors: true
       changed_when: false
 
+    - name: Set Ubuntu package version (22.04 for jammy, 24.04 for noble/oracular)
+      set_fact:
+        ubuntu_pkg_version: >-
+          {{
+            'ubuntu24.04' if ansible_distribution_release in ['noble', 'oracular']
+            else 'ubuntu22.04'
+          }}
+      when: agent_status.rc != 0
+
     - name: Download Zabbix repository package
       get_url:
-        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu22.04_all.deb"
+        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+{{ ubuntu_pkg_version }}_all.deb"
         dest: /tmp/zabbix-release.deb
       when: agent_status.rc != 0
+      register: download_result
+      ignore_errors: true
+
+    - name: Fail with helpful message if download failed (check DNS/internet on this host)
+      fail:
+        msg: "Failed to download Zabbix repo package from internet. Check if {{ inventory_hostname }} has DNS/internet access."
+      when:
+        - agent_status.rc != 0
+        - download_result is failed
 
     - name: Install Zabbix repository
       apt:
         deb: /tmp/zabbix-release.deb
       when: agent_status.rc != 0
 
-    - name: Update apt cache
+    - name: Update apt cache (only Zabbix repo for non-LTS Ubuntu like 24.10/oracular)
+      command: >
+        apt-get update
+        -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/zabbix.list
+        -o Dir::Etc::sourcelistd=''
+      when:
+        - agent_status.rc != 0
+        - ansible_distribution_release in ['oracular']
+      changed_when: true
+
+    - name: Update apt cache (standard for LTS Ubuntu)
       apt:
         update_cache: true
-      when: agent_status.rc != 0
+      when:
+        - agent_status.rc != 0
+        - ansible_distribution_release not in ['oracular']
+      ignore_errors: true
 
-    - name: Install zabbix-agent2
+    - name: Install zabbix-agent2 (non-LTS Ubuntu — only Zabbix repo)
+      command: >
+        apt-get install -y zabbix-agent2
+        -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/zabbix.list
+        -o Dir::Etc::sourcelistd=''
+      when:
+        - agent_status.rc != 0
+        - ansible_distribution_release in ['oracular']
+      changed_when: true
+
+    - name: Install zabbix-agent2 (standard)
       apt:
         name: zabbix-agent2
         state: present
-      when: agent_status.rc != 0
+      when:
+        - agent_status.rc != 0
+        - ansible_distribution_release not in ['oracular']
 
     - name: Configure Zabbix server address
       lineinfile:
@@ -52,7 +95,7 @@
       lineinfile:
         path: /etc/zabbix/zabbix_agent2.conf
         regexp: '^Hostname='
-        line: "Hostname={{ inventory_hostname_short | default(ansible_hostname) }}"
+        line: "Hostname={{ ansible_hostname_short | default(ansible_hostname) }}"
 
     - name: Enable and restart zabbix-agent2
       systemd:
@@ -67,4 +110,4 @@
 
     - name: Show agent status
       debug:
-        msg: "zabbix-agent2 is {{ final_status.stdout }} on {{ inventory_hostname }}"
+        msg: "zabbix-agent2 is {{ final_status.stdout }} on {{ inventory_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_release }})"
