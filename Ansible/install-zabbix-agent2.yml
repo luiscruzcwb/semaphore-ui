@@ -1,0 +1,70 @@
+---
+- name: Install and configure Zabbix Agent 2
+  hosts: all
+  become: true
+
+  vars:
+    zabbix_server: "192.168.18.203"
+    zabbix_version: "7.0"
+
+  tasks:
+    - name: Check if zabbix-agent2 is already installed
+      command: systemctl is-active zabbix-agent2
+      register: agent_status
+      ignore_errors: true
+      changed_when: false
+
+    - name: Download Zabbix repository package
+      get_url:
+        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu22.04_all.deb"
+        dest: /tmp/zabbix-release.deb
+      when: agent_status.rc != 0
+
+    - name: Install Zabbix repository
+      apt:
+        deb: /tmp/zabbix-release.deb
+      when: agent_status.rc != 0
+
+    - name: Update apt cache
+      apt:
+        update_cache: true
+      when: agent_status.rc != 0
+
+    - name: Install zabbix-agent2
+      apt:
+        name: zabbix-agent2
+        state: present
+      when: agent_status.rc != 0
+
+    - name: Configure Zabbix server address
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^Server='
+        line: "Server={{ zabbix_server }}"
+
+    - name: Configure Zabbix server active address
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^ServerActive='
+        line: "ServerActive={{ zabbix_server }}"
+
+    - name: Configure hostname
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^Hostname='
+        line: "Hostname={{ inventory_hostname_short | default(ansible_hostname) }}"
+
+    - name: Enable and restart zabbix-agent2
+      systemd:
+        name: zabbix-agent2
+        enabled: true
+        state: restarted
+
+    - name: Verify agent is running
+      command: systemctl is-active zabbix-agent2
+      register: final_status
+      changed_when: false
+
+    - name: Show agent status
+      debug:
+        msg: "zabbix-agent2 is {{ final_status.stdout }} on {{ inventory_hostname }}"
