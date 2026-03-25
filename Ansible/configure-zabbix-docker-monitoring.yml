@@ -1,0 +1,44 @@
+---
+- name: Configure Zabbix Agent 2 for Docker monitoring
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Skip host if Docker not found
+      meta: end_host
+      when: docker_check.rc != 0
+
+    - name: Add zabbix user to docker group
+      user:
+        name: zabbix
+        groups: docker
+        append: true
+
+    - name: Configure Docker plugin in zabbix-agent2
+      blockinfile:
+        path: /etc/zabbix/zabbix_agent2.d/plugins.d/docker.conf
+        create: true
+        block: |
+          Plugins.Docker.Endpoint=unix:///var/run/docker.sock
+
+    - name: Restart zabbix-agent2
+      systemd:
+        name: zabbix-agent2
+        state: restarted
+
+    - name: Verify Docker socket is accessible by zabbix
+      command: docker ps
+      become_user: zabbix
+      register: docker_access
+      ignore_errors: true
+      changed_when: false
+
+    - name: Show Docker access status
+      debug:
+        msg: "Docker monitoring {{ 'ENABLED' if docker_access.rc == 0 else 'FAILED — check docker group' }} on {{ inventory_hostname }}"
