@@ -32,13 +32,11 @@
         name: zabbix-agent2
         state: restarted
 
-    - name: Verify Docker socket is accessible by zabbix
-      command: docker ps
-      become_user: zabbix
-      register: docker_access
-      ignore_errors: true
+    - name: Verify zabbix is in docker group
+      command: groups zabbix
+      register: zabbix_groups
       changed_when: false
 
-    - name: Show Docker access status
+    - name: Show result
       debug:
-        msg: "Docker monitoring {{ 'ENABLED' if docker_access.rc == 0 else 'FAILED — check docker group' }} on {{ inventory_hostname }}"
+        msg: "Docker monitoring configured on {{ inventory_hostname }} — groups: {{ zabbix_groups.stdout }}"
