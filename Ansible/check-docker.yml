@@ -1,0 +1,27 @@
+---
+- name: Check Docker installation on all VMs
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Check running containers count
+      command: docker ps -q
+      register: containers
+      ignore_errors: true
+      changed_when: false
+      when: docker_check.rc == 0
+
+    - name: Report result
+      debug:
+        msg: >-
+          {{
+            'HAS DOCKER: ' + docker_check.stdout + ' — ' + (containers.stdout_lines | length | string) + ' containers running'
+            if docker_check.rc == 0
+            else 'NO DOCKER'
+          }}
