@@ -20,3 +20,8 @@ docker-compose.override.yml
 .env.*
 secrets/
 keys/
+# Arquivos de variáveis com credenciais (use Vault ou extra-vars)
+group_vars/all/vault.yml
+group_vars/*/vault.yml
+host_vars/*/vault.yml
+*.tfvars.json

@@ -223,7 +223,7 @@
       debug:
         msg:
           - "Painel do NPM: http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:{{ final_admin_port }}"
-          - "Credenciais padrão: admin@example.com / changeme (troque no primeiro login)"
+          - "Use as credenciais padrão do Nginx Proxy Manager no primeiro acesso e troque imediatamente."
           - "Arquivo .env com senhas está em {{ npm_env_file }} (no host remoto)."
 
   handlers:

@@ -1,4 +1,6 @@
 ---
+# Uso: ansible-playbook bootstrap-ssh-key.yml -e "ssh_public_key='ssh-ed25519 AAAA... user@host'"
+# Ou defina ssh_public_key em group_vars/all.yml (não commite o arquivo com a chave real).
 - name: Instalar chave SSH manualmente
   hosts: all
   become: true
@@ -11,8 +13,8 @@
         group: ansible
         mode: '0700'
 
-    - name: Adicionar chave pública diretamente
+    - name: Adicionar chave pública
       ansible.posix.authorized_key:
         user: ansible
         state: present
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGXoqKTs2A8JoGpfPCJzUMZTfC3PamjjGebN90pI/BhJ ansible@semaphore"
+        key: "{{ ssh_public_key | mandatory }}"

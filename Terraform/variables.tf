@@ -16,19 +16,22 @@ variable "ostemplate" {
   default = "local:vztmpl/ubuntu-25.04-standard_25.04-1.1_amd64.tar.zst"
 }
 
-# Ajustar IP da VM
+# Ajustar IP da VM (ex: "10.0.0.10/24")
 variable "vm_ip" {
-  default = "192.168.18.xxx/24" 
+  description = "IP da VM com máscara CIDR (ex: 10.0.0.10/24)"
+  default = ""
 }
 
-# Ajustar CIDR da VM
+# Ajustar CIDR da VM (ex: "10.0.0.10")
 variable "vm_ip_cidr_only" {
-  default = "192.168.18.xxx" 
+  description = "IP da VM sem máscara (ex: 10.0.0.10)"
+  default = ""
 }
 
-# Ajustar gateway
+# Ajustar gateway (ex: "10.0.0.1")
 variable "gateway" {
-  default = "192.168.18.1" 
+  description = "Gateway da rede (ex: 10.0.0.1)"
+  default = ""
 }
 
 variable "storage" {

@@ -14,13 +14,14 @@
     https_port: "443"
     admin_port: "81"
 
-    # Credenciais de banco (mantenha fora do compose)
+    # Credenciais de banco — defina via extra-vars, group_vars ou Ansible Vault.
+    # Exemplo: ansible-playbook deploy-npm.yml -e "db_password=SUA_SENHA db_root_password=SENHA_ROOT"
     db_host: "db"
     db_port: "3306"
     db_name: "npm"
     db_user: "npm"
-    db_password: "npm"             # troque em produção!
-    db_root_password: "npm"        # troque em produção!
+    db_password: "{{ npm_db_password | mandatory }}"
+    db_root_password: "{{ npm_db_root_password | mandatory }}"
 
   tasks:
     - name: Garantir diretório base do NPM
@@ -138,13 +139,11 @@
       debug:
         var: ps_out.stdout_lines
 
-    - name: Exibir URL de acesso e credenciais padrão
+    - name: Exibir URL de acesso
       debug:
         msg:
           - "Acesse o painel do NPM: http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:{{ admin_port }}"
-          - "Login padrão (altere no primeiro acesso):"
-          - "  Email: admin@example.com"
-          - "  Senha: changeme"
+          - "Use as credenciais padrão do Nginx Proxy Manager no primeiro acesso e troque imediatamente."
 
   handlers:
     - name: docker compose up
